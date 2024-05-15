@@ -16,9 +16,10 @@ const char LispLibrary[] PROGMEM = "";
 #define gfxsupport
 // #define lisplibrary
 #define assemblerlist
-// #define lineeditor
+#define lineeditor
 // #define vt100
 // #define extensions
+#define keypad
 
 // Includes
 
@@ -47,6 +48,24 @@ Adafruit_ILI9341 tft = Adafruit_ILI9341(TFT_CS, TFT_DC, TFT_RST);    /* HW SPI *
 #define TFT_MOSI 19
 #define TFT_CLK  18
 // Adafruit_ILI9341 tft = Adafruit_ILI9341(TFT_CS, TFT_DC, TFT_MOSI, TFT_CLK, TFT_RST, -1);    /* SW SPI */
+#endif
+
+#if defined(keypad)
+#include <Adafruit_TCA8418_registers.h>
+#include <Adafruit_TCA8418.h>
+#define TCA_SDA 4
+#define TCA_SCL 5
+#define TCA_IRQ_PIN 6
+#define ROWS 4
+#define COLS 4
+Adafruit_TCA8418 key;
+
+char keymap[ROWS][COLS] = {
+    {'1', '5', '9', 'C'},
+    {'2', '6', '0', 'D'},
+    {'3', '7', 'A', 'E'},
+    {'4', '8', 'B', 'F'},
+};
 #endif
 
 // Platform specific settings
@@ -7210,9 +7229,22 @@ int gserial () {
   }
 #if defined(lineeditor)
   while (!KybdAvailable) {
-    while (!Serial.available());
-    char temp = Serial.read();
-    processkey(temp);
+    if (Serial.available()) {
+      char temp = Serial.read();
+      processkey(temp);
+    }
+    else if (key.available()) {
+      int k = key.getEvent();
+      bool pressed = k & 0x80;
+      k &= 0x7F;
+      k--;
+      uint8_t row = k / 10;
+      uint8_t col = k % 10;
+      if (pressed) {
+        char temp = keymap[col][row];
+          processkey(temp);
+      }
+    }
   }
   if (ReadPtr != WritePtr) return KybdBuf[ReadPtr++];
   KybdAvailable = 0;
@@ -7419,6 +7451,26 @@ void initgfx () {
   #endif
 }
 
+void initkeypad () {
+  #if defined(keypad)
+  Wire.setSDA(TCA_SDA); // SDA, SCL must be set before begin()
+  Wire.setSCL(TCA_SCL);
+  Wire.begin();
+
+  if (!key.begin(TCA8418_DEFAULT_ADDR, &Wire))
+  {
+    Serial.println("keypad not found, check wiring & pullups!");
+    while (1)
+      ;
+  }
+
+  key.matrix(ROWS, COLS);
+  key.enableInterrupts();
+  key.enableDebounce();
+  key.flush(); // flush pending interrupts
+  #endif
+}
+
 // Entry point from the Arduino IDE
 void setup () {
   Serial.begin(9600);
@@ -7429,6 +7481,7 @@ void setup () {
   initenv();
   initsleep();
   initgfx();
+  initkeypad();
   pfstring(PSTR("uLisp 4.5a "), pserial); pln(pserial);
 }
 
