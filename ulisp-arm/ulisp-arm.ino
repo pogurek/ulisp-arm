@@ -7242,7 +7242,7 @@ int gserial () {
       uint8_t col = k % 10;
       if (pressed) {
         char temp = keymap[col][row];
-          processkey(temp);
+        processkey(temp);
       }
     }
   }
