@@ -13,7 +13,7 @@ const char LispLibrary[] PROGMEM = "";
 #define printfreespace
 // #define printgcs
 // #define sdcardsupport
-// #define gfxsupport
+#define gfxsupport
 // #define lisplibrary
 #define assemblerlist
 // #define lineeditor
@@ -33,6 +33,20 @@ const char LispLibrary[] PROGMEM = "";
 #define SDSIZE 91
 #else
 #define SDSIZE 0
+#endif
+
+#if defined(gfxsupport)
+#include <Adafruit_GFX.h>
+#include <Adafruit_ILI9341.h>
+const int COLOR_WHITE = ILI9341_WHITE, COLOR_BLACK = ILI9341_BLACK, COLOR_GREEN = ILI9341_GREEN;
+#define TFT_CS  17
+#define TFT_DC  20
+#define TFT_RST 22
+Adafruit_ILI9341 tft = Adafruit_ILI9341(TFT_CS, TFT_DC, TFT_RST);    /* HW SPI */
+#define TFT_MISO 16
+#define TFT_MOSI 19
+#define TFT_CLK  18
+// Adafruit_ILI9341 tft = Adafruit_ILI9341(TFT_CS, TFT_DC, TFT_MOSI, TFT_CLK, TFT_RST, -1);    /* SW SPI */
 #endif
 
 // Platform specific settings
@@ -204,14 +218,6 @@ const char LispLibrary[] PROGMEM = "";
   #define CODESIZE 256                    /* Bytes */
   #define STACKDIFF 320
   #define CPU_RP2040
-  #if defined(gfxsupport)
-  const int COLOR_WHITE = 0xffff, COLOR_BLACK = 0;
-  #include <Adafruit_GFX.h>    // Core graphics library
-  #include <Adafruit_ST7789.h> // Hardware-specific library for ST7789
-  Adafruit_ST7789 tft = Adafruit_ST7789(5, 1, 3, 2, 0); // TTGO RP2040 TFT
-  #define TFT_BACKLIGHT 4
-  #define TFT_I2C_POWER 22
-  #endif
 
 #elif defined(ARDUINO_RASPBERRY_PI_PICO_W)
   #define WORKSPACESIZE (15536-SDSIZE)    /* Objects (8*bytes) */
@@ -7405,14 +7411,10 @@ void initgfx () {
   tft.fillScreen(0);
   pinMode(34, OUTPUT); // Backlight
   digitalWrite(34, HIGH);
-  #elif defined(ARDUINO_RASPBERRY_PI_PICO)
-  tft.init(135, 240);
-  pinMode(TFT_I2C_POWER, OUTPUT);
-  digitalWrite(TFT_I2C_POWER, HIGH);
-  tft.setRotation(1);
-  tft.fillScreen(ST77XX_BLACK);
-  pinMode(TFT_BACKLIGHT, OUTPUT);
-  digitalWrite(TFT_BACKLIGHT, HIGH);
+  #elif defined(ARDUINO_RASPBERRY_PI_PICO) || defined(ARDUINO_RASPBERRY_PI_PICO_W)
+  tft.begin();
+  tft.setRotation(3);
+  tft.fillScreen(COLOR_GREEN);
   #endif
   #endif
 }
