@@ -61,10 +61,10 @@ Adafruit_ILI9341 tft = Adafruit_ILI9341(TFT_CS, TFT_DC, TFT_RST);    /* HW SPI *
 Adafruit_TCA8418 key;
 
 char keymap[ROWS][COLS] = {
-    {'1', '5', '9', 'C'},
-    {'2', '6', '0', 'D'},
-    {'3', '7', 'A', 'E'},
-    {'4', '8', 'B', 'F'},
+    {'1', '5', '9', '+'},
+    {'2', '6', '0', '\b'},
+    {'3', '7', '(', ' '},
+    {'4', '8', ')', '\n'},
 };
 #endif
 
@@ -7133,77 +7133,61 @@ void loadfromlibrary (object *env) {
 
 // For line editor
 const int TerminalWidth = 80;
-volatile int WritePtr = 0, ReadPtr = 0, LastWritePtr = 0;
-const int KybdBufSize = 333; // 42*8 - 3
-char KybdBuf[KybdBufSize];
+volatile int LastWritePtr = 0;
+
+// BEGIN from T-Deck
+const int Columns = 53;
+const int Leading = 10; // Between 8 and 10
+const int Lines = 240/Leading;
+const int LastColumn = Columns-1;
+const int LastLine = Lines-1;
+const char Cursor = 0x5f;
+
+volatile int WritePtr = 0, ReadPtr = 0;
+const int KybdBufSize = Columns*Lines;
+char KybdBuf[KybdBufSize], ScrollBuf[Columns][Lines];
 volatile uint8_t KybdAvailable = 0;
+uint8_t Scroll = 0;
 
+const char STX = 2; // Code to invert text
+const char ETX = 3; // Code to invert text
+// END from T-Deck
+
+// BEGIN from T-Deck
 // Parenthesis highlighting
-void esc (int p, char c) {
-  Serial.write('\e'); Serial.write('[');
-  Serial.write((char)('0'+ p/100));
-  Serial.write((char)('0'+ (p/10) % 10));
-  Serial.write((char)('0'+ p % 10));
-  Serial.write(c);
-}
-
-void hilight (char c) {
-  Serial.write('\e'); Serial.write('['); Serial.write(c); Serial.write('m');
-}
-
-void Highlight (int p, int wp, uint8_t invert) {
-  wp = wp + 2; // Prompt
-#if defined (printfreespace)
-  int f = Freespace;
-  while (f) { wp++; f=f/10; }
-#endif
-  int line = wp/TerminalWidth;
-  int col = wp%TerminalWidth;
-  int targetline = (wp - p)/TerminalWidth;
-  int targetcol = (wp - p)%TerminalWidth;
-  int up = line-targetline, left = col-targetcol;
+void Highlight (int p, uint8_t invert) {
   if (p) {
-    if (up) esc(up, 'A');
-    if (col > targetcol) esc(left, 'D'); else esc(-left, 'C');
-    if (invert) hilight('7');
-    Serial.write('('); Serial.write('\b');
-    // Go back
-    if (up) esc(up, 'B'); // Down
-    if (col > targetcol) esc(left, 'C'); else esc(-left, 'D');
-    Serial.write('\b'); Serial.write(')');
-    if (invert) hilight('0');
+    for (int n=0; n < p; n++) Display(8);
+    Display(17 + invert);
+    for (int n=1; n < p; n++) Display(9);
+    Display(19 + invert);
+    Display(9);
   }
 }
 
-void processkey (char c) {
+void ProcessKey (char c) {
+  static int parenthesis = 0;
   if (c == 27) { setflag(ESCAPE); return; }    // Escape key
-#if defined(vt100)
-  static int parenthesis = 0, wp = 0;
   // Undo previous parenthesis highlight
-  Highlight(parenthesis, wp, 0);
+  Highlight(parenthesis, 0);
   parenthesis = 0;
-#endif
   // Edit buffer
   if (c == '\n' || c == '\r') {
     pserial('\n');
     KybdAvailable = 1;
-    ReadPtr = 0; LastWritePtr = WritePtr;
+    ReadPtr = 0;
     return;
   }
   if (c == 8 || c == 0x7f) {     // Backspace key
     if (WritePtr > 0) {
       WritePtr--;
-      Serial.write(8); Serial.write(' '); Serial.write(8);
+      Display(0x7F);
       if (WritePtr) c = KybdBuf[WritePtr-1];
     }
-  } else if (c == 9) { // tab or ctrl-I
-    for (int i = 0; i < LastWritePtr; i++) Serial.write(KybdBuf[i]);
-    WritePtr = LastWritePtr;
   } else if (WritePtr < KybdBufSize) {
     KybdBuf[WritePtr++] = c;
-    Serial.write(c);
+    Display(c);
   }
-#if defined(vt100)
   // Do new parenthesis highlight
   if (c == ')') {
     int search = WritePtr-1, level = 0;
@@ -7212,14 +7196,14 @@ void processkey (char c) {
       if (c == ')') level++;
       if (c == '(') {
         level--;
-        if (level == 0) {parenthesis = WritePtr-search-1; wp = WritePtr; }
+        if (level == 0) parenthesis = WritePtr-search-1;
       }
     }
-    Highlight(parenthesis, wp, 1);
+    Highlight(parenthesis, 1);
   }
-#endif
   return;
 }
+// END from T-Deck
 
 int gserial () {
   if (LastChar) {
@@ -7231,7 +7215,8 @@ int gserial () {
   while (!KybdAvailable) {
     if (Serial.available()) {
       char temp = Serial.read();
-      processkey(temp);
+      // processkey(temp);
+      ProcessKey(temp);
     }
     else if (key.available()) {
       int k = key.getEvent();
@@ -7242,7 +7227,8 @@ int gserial () {
       uint8_t col = k % 10;
       if (pressed) {
         char temp = keymap[col][row];
-        processkey(temp);
+        // processkey(temp);
+        ProcessKey(temp);
       }
     }
   }
@@ -7416,6 +7402,111 @@ object *read (gfun_t gfun) {
   if (item == (object *)DOT) return read(gfun);
   if (item == (object *)QUO) return cons(bsymbol(QUOTE), cons(read(gfun), NULL));
   return item;
+}
+
+// Terminal **********************************************************************************
+
+// Plot character at absolute character cell position
+void PlotChar (uint8_t ch, uint8_t line, uint8_t column) {
+ #if defined(gfxsupport)
+  uint16_t y = line*Leading;
+  uint16_t x = column*6;
+  ScrollBuf[column][(line+Scroll) % Lines] = ch;
+  if (ch & 0x80) {
+    tft.drawChar(x, y, ch & 0x7f, COLOR_BLACK, COLOR_GREEN, 1);
+  } else {
+    tft.drawChar(x, y, ch & 0x7f, COLOR_WHITE, COLOR_BLACK, 1);
+  }
+#endif
+}
+
+// Clears the bottom line and then scrolls the display up by one line
+void ScrollDisplay () {
+  #if defined(gfxsupport)
+  tft.fillRect(0, 240-Leading, 320, 10, COLOR_BLACK);
+  for (uint8_t x = 0; x < Columns; x++) {
+    char c = ScrollBuf[x][Scroll];
+    for (uint8_t y = 0; y < Lines-1; y++) {
+      char c2 = ScrollBuf[x][(y+Scroll+1) % Lines];
+      if (c != c2) {
+        if (c2 & 0x80) {
+          tft.drawChar(x*6, y*Leading, c2 & 0x7f, COLOR_BLACK, COLOR_GREEN, 1);
+        } else {
+          tft.drawChar(x*6, y*Leading, c2 & 0x7f, COLOR_WHITE, COLOR_BLACK, 1);
+        }
+        c = c2;
+      }
+    }
+  }
+  // Tidy up graphics
+  for (uint8_t y = 0; y < Lines-1; y++) tft.fillRect(0, y*Leading+8, 320, 2, COLOR_BLACK);
+  tft.fillRect(318, 0, 3, 240, COLOR_BLACK);
+  for (int x=0; x<Columns; x++) ScrollBuf[x][Scroll] = 0;
+  Scroll = (Scroll + 1) % Lines;
+  #endif
+}
+
+const char VT = 11; // Vertical tab
+const char BEEP = 7;
+
+// Prints a character to display, with cursor, handling control characters
+void Display (char c) {
+  #if defined(gfxsupport)
+  static uint8_t line = 0, column = 0;
+  static bool invert = false;
+  // These characters don't affect the cursor
+  if (c == 8) {                    // Backspace
+    //PlotChar(' ', line+Scroll, Column); //hide cursor?
+    if (column == 0) {
+      line--; column = LastColumn;
+    } else column--;
+    //PlotChar(Cursor, line+Scroll, Column); //show cursor
+    return;
+  }
+  if (c == 9) {                    // Cursor forward
+    if (column == LastColumn) {
+      line++; column = 0;
+    } else column++;
+    return;
+  }
+  if ((c >= 17) && (c <= 20)) {    // Parentheses
+    if (c == 17) PlotChar('(', line, column);
+    else if (c == 18) PlotChar('(' | 0x80, line, column);
+    else if (c == 19) PlotChar(')', line, column);
+    else PlotChar(')' | 0x80, line, column);
+    return;
+  }
+  if (c == STX) { invert = true; return; }
+  if (c == ETX) { invert = false; return; }
+  // Hide cursor
+  PlotChar(' ', line, column);
+  if (c == 0x7F) {                 // DEL
+    if (column == 0) {
+      line--; column = LastColumn;
+    } else column--;
+  } else if ((c & 0x7f) >= 32) {   // Normal character
+    if (invert) PlotChar(c | 0x80, line, column++); else PlotChar(c, line, column++);
+    if (column > LastColumn) {
+      column = 0;
+      if (line == LastLine) ScrollDisplay(); else line++;
+    }
+  // Control characters
+  } else if (c == 12) {            // Clear display
+    tft.fillScreen(COLOR_BLACK); line = 0; column = 0; Scroll = 0;
+    for (int col = 0; col < Columns; col++) {
+      for (int row = 0; row < Lines; row++) {
+        ScrollBuf[col][row] = 0;
+      }
+    }
+  } else if (c == '\n') {          // Newline
+    column = 0;
+    if (line == LastLine) ScrollDisplay(); else line++;
+  } else if (c == VT) {
+    column = 0; Scroll = 0; line = LastLine - 2;
+  } else if (c == BEEP) tone(0, 440, 125); // Beep
+  // Show cursor
+  PlotChar(Cursor, line, column);
+ #endif
 }
 
 // Setup
