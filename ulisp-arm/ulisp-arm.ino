@@ -6889,6 +6889,7 @@ object *eval (object *form, object *env) {
 
 void pserial (char c) {
   LastPrint = c;
+  if (!tstflag(NOECHO)) Display(c);
   if (c == '\n') Serial.write('\r');
   Serial.write(c);
 }
