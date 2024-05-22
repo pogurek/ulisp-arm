@@ -19,7 +19,7 @@
 #define lineeditor
 // #define vt100
 // #define extensions
-#define keypad
+// #define keypad
 
 // Includes
 
