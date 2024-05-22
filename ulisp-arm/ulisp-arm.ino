@@ -7219,6 +7219,7 @@ int gserial () {
       // processkey(temp);
       ProcessKey(temp);
     }
+    #if defined(keypad)
     else if (key.available()) {
       int k = key.getEvent();
       bool pressed = k & 0x80;
@@ -7232,6 +7233,7 @@ int gserial () {
         ProcessKey(temp);
       }
     }
+    #endif
   }
   if (ReadPtr != WritePtr) return KybdBuf[ReadPtr++];
   KybdAvailable = 0;
