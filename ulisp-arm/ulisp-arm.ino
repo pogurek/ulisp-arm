@@ -7133,8 +7133,6 @@ void loadfromlibrary (object *env) {
 }
 
 // For line editor
-const int TerminalWidth = 80;
-volatile int LastWritePtr = 0;
 
 // BEGIN from T-Deck
 const int Columns = 53;
@@ -7152,9 +7150,7 @@ uint8_t Scroll = 0;
 
 const char STX = 2; // Code to invert text
 const char ETX = 3; // Code to invert text
-// END from T-Deck
 
-// BEGIN from T-Deck
 // Parenthesis highlighting
 void Highlight (int p, uint8_t invert) {
   if (p) {
